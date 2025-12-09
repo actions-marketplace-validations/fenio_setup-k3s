@@ -30,8 +30,17 @@ inputs:
 outputs:
   kubeconfig:
     description: 'Path to the kubeconfig file'
+    value: ${{ steps.setup.outputs.kubeconfig }}
 
 runs:
-  using: 'node24'
-  main: 'dist/index.js'
-  post: 'dist/index.js'
+  using: 'composite'
+  steps:
+    - name: Setup k3s
+      id: setup
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_K3S_ARGS: ${{ inputs.k3s-args }}
+        INPUT_WAIT_FOR_READY: ${{ inputs.wait-for-ready }}
+        INPUT_TIMEOUT: ${{ inputs.timeout }}
+      run: ${{ github.action_path }}/setup.sh

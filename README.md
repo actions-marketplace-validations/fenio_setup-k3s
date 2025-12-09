@@ -1,14 +1,13 @@
 # Setup k3s Action
 
-A GitHub Action for installing and configuring [k3s](https://k3s.io) - a lightweight, certified Kubernetes distribution perfect for CI/CD pipelines, testing, and development workflows.
+A simple GitHub Action for installing and configuring [k3s](https://k3s.io) - a lightweight, certified Kubernetes distribution perfect for CI/CD pipelines, testing, and development workflows.
 
 ## Features
 
 - ✅ Automatic installation of k3s
-- ✅ Cleans up conflicting Kubernetes installations (k0s, minikube, KubeSolo)
+- ✅ Simple shell script-based implementation (no build step required)
 - ✅ Waits for cluster readiness (nodes and system pods)
 - ✅ Outputs kubeconfig path for easy integration
-- ✅ **Automatic cleanup and system restoration** - Runs post-cleanup after your workflow completes
 - ✅ Configurable k3s arguments for customization
 
 ## Quick Start
@@ -34,8 +33,6 @@ jobs:
         run: |
           kubectl apply -f k8s/
           kubectl wait --for=condition=available --timeout=60s deployment/my-app
-      
-      # Cleanup happens automatically after this job completes!
 ```
 
 ## Inputs
@@ -91,20 +88,10 @@ jobs:
 
 ## How It Works
 
-### Setup Phase
-1. Cleans up any existing Kubernetes installations (k0s, minikube, KubeSolo, old k3s)
-2. Waits for port 6443 to be free
-3. Installs k3s using the official installation script
-4. Waits for the cluster to become ready (nodes Ready, system pods Running)
-5. Exports `KUBECONFIG` environment variable
-
-### Automatic Cleanup (Post-run)
-After your workflow steps complete (whether successful or failed), the action automatically:
-1. Stops and uninstalls k3s using the official uninstall script
-2. Removes k3s configuration files and data directories
-3. Leaves your system in a clean state
-
-This is achieved using GitHub Actions' `post:` hook, similar to how `actions/checkout` cleans up after itself.
+1. Installs k3s using the official installation script from https://get.k3s.io
+2. Waits for the k3s service to start
+3. Waits for the cluster to become ready (nodes Ready, system pods Running)
+4. Exports `KUBECONFIG` environment variable and output
 
 ## Requirements
 
@@ -157,5 +144,3 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## Related Actions
 
 - [fenio/setup-kubesolo](https://github.com/fenio/setup-kubesolo) - Ultra-lightweight Kubernetes for CI/CD
-- [fenio/setup-k0s](https://github.com/fenio/setup-k0s) - Zero friction Kubernetes (coming soon)
-- [fenio/setup-minikube](https://github.com/fenio/setup-minikube) - Local Kubernetes (coming soon)

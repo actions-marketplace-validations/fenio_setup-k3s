@@ -2,116 +2,54 @@
 
 This file provides comprehensive documentation about the setup-k3s GitHub Action for AI agents and developers working with this codebase.
 
-## ⚠️ CRITICAL PRINCIPLE: SYSTEM STATE RESTORATION ⚠️
-
-**THE MOST IMPORTANT REQUIREMENT OF THIS ACTION:**
-
-This action MUST leave the system in EXACTLY the same state as it was before the action ran. This is a non-negotiable requirement.
-
-### Why This Matters
-GitHub Actions assume that each workflow runs on a pristine Ubuntu fresh install. Any changes made during setup (installing binaries, creating files, starting services) MUST be completely reversed during cleanup. Failure to restore the system state can break subsequent workflows or leave orphaned processes and files.
-
-### What Must Be Restored
-Every operation in the setup phase has a corresponding cleanup operation:
-
-| Setup Operation | Cleanup Operation | Location |
-|----------------|-------------------|----------|
-| Install k3s via install script | Uninstalled via `/usr/local/bin/k3s-uninstall.sh` (removes binary) | `src/cleanup.ts:46` |
-| Start k3s systemd service | Stopped and removed by k3s-uninstall.sh | `src/cleanup.ts:46` |
-| Create kubeconfig at `/etc/rancher/k3s/k3s.yaml` | Removed by k3s-uninstall.sh and explicit cleanup | `src/cleanup.ts:55` |
-| Create k3s data directory `/var/lib/rancher/k3s` | Removed by explicit cleanup | `src/cleanup.ts:55` |
-| Set KUBECONFIG environment variable | No cleanup needed - job-scoped only | N/A |
-
-### Cleanup Guarantees
-- Cleanup runs automatically via GitHub Actions `post:` hook - it ALWAYS runs, even if the workflow fails
-- Cleanup is non-failing (`ignoreReturnCode: true`) to ensure it completes even if some operations encounter errors
-- The k3s install script provides an uninstall script that removes all k3s components
-
-### When Making Changes
-**BEFORE adding any new setup operation, you MUST add the corresponding cleanup operation.**
-
-If you:
-- Create a file → Delete it in cleanup
-- Modify a config → Restore original in cleanup
-- Stop a service → Restart it in cleanup
-- Install a package → Uninstall it in cleanup
-
-**Violating this principle will break other workflows and is unacceptable.**
-
----
-
 ## Project Overview
 
-**setup-k3s** is a GitHub Action that installs and configures k3s - Lightweight certified Kubernetes distribution for CI/CD. The action handles both setup and automatic cleanup/restoration of the system state.
+**setup-k3s** is a GitHub Action that installs and configures k3s - Lightweight certified Kubernetes distribution for CI/CD. The action is implemented as a simple composite action using a shell script.
 
 ### Key Features
 - Automatic installation of k3s with version/channel selection
 - Support for custom k3s arguments
 - Cluster readiness checks with configurable timeout
-- **Automatic post-run cleanup and complete system restoration** (MOST IMPORTANT FEATURE)
 - Outputs kubeconfig path for easy integration with kubectl
+- Simple shell script implementation (no build process required)
 
 ## Architecture
 
-### Entry Point Flow
-The action uses GitHub Actions' `post:` hook mechanism for automatic cleanup:
+The action uses GitHub Actions' composite action format with a single shell script.
 
-1. **Main Run** (`src/index.ts`): Entry point that routes to either main or cleanup based on state
-2. **Setup Phase** (`src/main.ts`): Handles k3s installation and configuration
-3. **Cleanup Phase** (`src/cleanup.ts`): Automatically runs after job completion for restoration
-
-### Execution Phases
-
-#### Phase 1: Setup (src/main.ts)
+### Execution Flow
 
 ```
-installK3s() → waitForClusterReady()
+setup.sh: installK3s() → waitForClusterReady()
 ```
 
-**installK3s(version, k3sArgs)**
+**Installation Phase**
 - Resolves version/channel (latest, stable, or specific version)
 - Uses official k3s install script from https://get.k3s.io
 - Passes custom arguments to k3s installer
 - Waits for k3s service to start
 - Verifies service is active
-- Location: `src/main.ts:39-84`
+- Location: `setup.sh:14-47`
 
-**waitForClusterReady(timeout)**
+**Readiness Check Phase**
 - Polls for cluster readiness with configurable timeout
 - Checks: k3s service active → kubeconfig exists → kubectl connects → node Ready → system pods running
 - Sets KUBECONFIG output and environment variable
 - Shows cluster info when ready
-- Location: `src/main.ts:86-172`
-
-#### Phase 2: Cleanup (src/cleanup.ts)
-
-```
-uninstallK3s()
-```
-
-**uninstallK3s()**
-- Checks if k3s service is active
-- Runs `/usr/local/bin/k3s-uninstall.sh` if it exists
-- Explicitly removes remaining directories (`/etc/rancher/k3s`, `/var/lib/rancher/k3s`)
-- Location: `src/cleanup.ts:22-61`
+- Location: `setup.sh:53-107`
 
 ## File Structure
 
 ```
 setup-k3s/
-├── src/
-│   ├── index.ts         # Entry point - routes to main or cleanup
-│   ├── main.ts          # Setup phase implementation
-│   └── cleanup.ts       # Cleanup phase implementation
-├── dist/                # Compiled JavaScript (via @vercel/ncc)
-│   ├── index.js         # Bundled main entry point
-│   └── *.map            # Source maps
+├── setup.sh             # Main shell script for k3s setup
 ├── action.yml           # GitHub Action metadata and interface
-├── package.json         # Node.js dependencies and scripts
-├── tsconfig.json        # TypeScript configuration
 ├── .github/workflows/   # CI/CD workflows
 │   └── ci.yml           # CI workflow
-└── AGENTS.md            # This file
+├── README.md            # User documentation
+├── AGENTS.md            # This file
+├── LICENSE              # MIT License
+└── .gitignore           # Git ignore rules
 ```
 
 ## Key Technical Details
@@ -128,45 +66,16 @@ setup-k3s/
 - `kubeconfig`: Path to kubeconfig file (`/etc/rancher/k3s/k3s.yaml`)
 
 **Runtime:**
-- Node.js 24 (`node24`)
-- Main entry: `dist/index.js`
-- Post hook: `dist/index.js` (same file, different execution path)
+- Composite action using bash shell
+- Main script: `setup.sh`
 
 ### Dependencies
 
-**Production:**
-- `@actions/core`: GitHub Actions toolkit for inputs/outputs/logging
-- `@actions/exec`: Execute shell commands
-
-**Development:**
-- `@vercel/ncc`: Compiles TypeScript and bundles dependencies into single file
-- `typescript`: TypeScript compiler
-
-### Build Process
-
-```bash
-npm run build  # Uses @vercel/ncc to create dist/index.js
-```
-
-**Important:** The `dist/` directory must be committed to the repository for the action to work, as GitHub Actions cannot run build steps before execution.
-
-## State Management
-
-The action uses `core.saveState()` and `core.getState()` to coordinate between main and cleanup phases:
-
-```typescript
-// src/main.ts - Set state during main run
-core.saveState('isPost', 'true');
-
-// src/index.ts - Check state to determine phase
-if (!core.getState('isPost')) {
-  // Main run
-  main()
-} else {
-  // Post run (cleanup)
-  cleanup()
-}
-```
+**None!** This action is a pure shell script with no external dependencies beyond what's available in a standard GitHub Actions runner:
+- bash
+- curl
+- systemctl
+- kubectl (installed by k3s)
 
 ## System Requirements
 
@@ -187,25 +96,34 @@ inputs:
     default: 'default-value'
 ```
 
-2. Read input in `src/main.ts`:
-```typescript
-const newOption = core.getInput('new-option');
+2. Pass input to shell script in `action.yml`:
+```yaml
+env:
+  INPUT_NEW_OPTION: ${{ inputs.new-option }}
 ```
 
-3. Update README.md documentation
+3. Read input in `setup.sh`:
+```bash
+NEW_OPTION="${INPUT_NEW_OPTION:-default-value}"
+```
+
+4. Update README.md documentation
 
 ### Modifying Installation Logic
 
-The installation logic is in `src/main.ts:39-84`. Key areas:
-- Version/channel resolution: lines 48-55
-- Install command construction: lines 46-58
-- Service verification: lines 68-76
+The installation logic is in `setup.sh:14-47`. Key areas:
+- Version/channel resolution: lines 20-27
+- Install command construction: lines 19-29
+- Service verification: lines 37-43
 
-### Adjusting Cleanup Behavior
+### Adjusting Readiness Checks
 
-**CRITICAL:** Cleanup logic is in `src/cleanup.ts`. The cleanup is designed to be non-failing (uses `ignoreReturnCode: true`) to avoid breaking workflows if cleanup encounters issues.
-
-**MANDATORY RULE:** Every modification to setup logic MUST have a corresponding cleanup operation. Review the "CRITICAL PRINCIPLE: SYSTEM STATE RESTORATION" section at the top of this document before making any changes.
+Readiness check logic is in `setup.sh:53-107`. Key checks:
+- Service active check: line 72
+- Kubeconfig existence: line 74
+- kubectl connectivity: line 76
+- Node Ready status: line 78
+- System pods running: line 82
 
 ## Testing Strategy
 
@@ -214,14 +132,17 @@ The installation logic is in `src/main.ts:39-84`. Key areas:
 - [ ] k3s installs successfully
 - [ ] Cluster becomes ready within timeout
 - [ ] kubectl can connect and list nodes
+- [ ] KUBECONFIG output is set correctly
+- [ ] KUBECONFIG environment variable is exported
 
-**Cleanup Phase (CRITICAL - MUST VERIFY):**
-- [ ] Cleanup removes ALL k3s files
-- [ ] k3s service is stopped and removed
-- [ ] k3s-uninstall.sh script executes successfully
-- [ ] No leftover processes or sockets
-- [ ] No orphaned systemd services remain
-- [ ] Rancher directories are cleaned up
+**Version Selection:**
+- [ ] stable channel works
+- [ ] latest channel works
+- [ ] Specific version (e.g., v1.28.5+k3s1) works
+
+**Custom Arguments:**
+- [ ] Custom k3s-args are passed correctly
+- [ ] Components can be disabled (e.g., --disable=traefik)
 
 ## Debugging
 
@@ -229,20 +150,19 @@ The installation logic is in `src/main.ts:39-84`. Key areas:
 Set repository secret: `ACTIONS_STEP_DEBUG = true`
 
 ### Key Log Messages
-- "Starting k3s setup..." - Main phase begins
+- "Starting k3s setup..." - Setup begins
+- "Installing k3s..." - Installation starts
 - "k3s installed successfully" - Installation complete
-- "k3s cluster is fully ready!" - Cluster ready
-- "Starting k3s cleanup..." - Cleanup phase begins
-- "k3s uninstalled successfully" - Cleanup complete
+- "Node is Ready" - Node is ready
+- "All system pods are running" - All pods running
+- "k3s cluster is fully ready!" - Cluster fully ready
+- "k3s setup completed successfully!" - Setup complete
 
 ### Diagnostic Information
-When cluster readiness times out, `showDiagnostics()` (`src/main.ts:174-200`) displays:
+When cluster readiness times out, diagnostics are displayed:
 - k3s service status
 - k3s journal logs (last 100 lines)
 - Kubeconfig directory contents
-- Listening ports
-- Network interfaces
-- Running containers (via k3s crictl)
 
 ## Related Resources
 
@@ -250,18 +170,25 @@ When cluster readiness times out, `showDiagnostics()` (`src/main.ts:174-200`) di
 - **k3s GitHub**: https://github.com/k3s-io/k3s
 - **k3s Documentation**: https://docs.k3s.io/
 - **GitHub Actions Documentation**: https://docs.github.com/actions
-- **Node.js Actions Guide**: https://docs.github.com/actions/creating-actions/creating-a-javascript-action
+- **Composite Actions Guide**: https://docs.github.com/actions/creating-actions/creating-a-composite-action
 
 ## Contributing
 
 ### Development Workflow
-1. Make changes to `src/*.ts`
-2. **CRITICAL:** If modifying setup phase, add corresponding cleanup operations
-3. Run `npm run build` to compile
-4. Commit both `src/` and `dist/` changes
-5. Test in a workflow on GitHub - verify BOTH setup AND cleanup work correctly
-6. Test that subsequent workflows still work after your action runs
-7. Create pull request
+1. Make changes to `setup.sh` or `action.yml`
+2. Test locally if possible
+3. Test in a workflow on GitHub
+4. Update README.md if adding/changing features
+5. Create pull request
 
 ### Release Process
 Releases are typically managed via tags. Tags should follow semantic versioning (e.g., v1.0.0).
+
+## Simplification Notes
+
+This action was simplified from a Node.js/TypeScript implementation to a pure shell script composite action. Benefits include:
+- No build step required
+- No dependencies to manage
+- Simpler codebase to maintain
+- No need to commit compiled code to the repository
+- Easier to understand and modify
