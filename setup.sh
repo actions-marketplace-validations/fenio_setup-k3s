@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
+echo "::group::Installing k3s"
 echo "Starting k3s setup..."
 
 # Read inputs
@@ -12,7 +13,6 @@ TIMEOUT="${INPUT_TIMEOUT:-120}"
 echo "Configuration: version=$VERSION, k3s-args=\"$K3S_ARGS\", wait-for-ready=$WAIT_FOR_READY, timeout=${TIMEOUT}s"
 
 # Install k3s
-echo "::group::Installing k3s"
 echo "Installing k3s $VERSION..."
 
 # Prepare installation command
