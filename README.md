@@ -25,7 +25,7 @@ jobs:
       
       - name: Setup k3s
         id: k3s
-        uses: fenio/setup-k3s@v1
+        uses: fenio/setup-k3s@v2
       
       - name: Deploy and test
         env:
@@ -43,6 +43,7 @@ jobs:
 | `k3s-args` | Additional arguments to pass to k3s installer | `--write-kubeconfig-mode 644` |
 | `wait-for-ready` | Wait for cluster to be ready before completing | `true` |
 | `timeout` | Timeout in seconds to wait for cluster readiness | `120` |
+| `dns-readiness` | Wait for CoreDNS to be ready and verify DNS resolution works | `true` |
 
 ## Outputs
 
