@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 echo "Starting k3s setup..."
@@ -20,7 +20,7 @@ INSTALL_CMD="curl -sfL https://get.k3s.io | "
 
 if [ "$VERSION" != "stable" ] && [ "$VERSION" != "latest" ]; then
   INSTALL_CMD+="INSTALL_K3S_VERSION=\"$VERSION\" "
-elif [ "$VERSION" == "latest" ]; then
+elif [ "$VERSION" = "latest" ]; then
   INSTALL_CMD+="INSTALL_K3S_CHANNEL=\"latest\" "
 else
   INSTALL_CMD+="INSTALL_K3S_CHANNEL=\"stable\" "
@@ -51,7 +51,7 @@ echo "kubeconfig=$KUBECONFIG_PATH" >> "$GITHUB_OUTPUT"
 echo "KUBECONFIG=$KUBECONFIG_PATH" >> "$GITHUB_ENV"
 
 # Wait for cluster ready if requested
-if [ "$WAIT_FOR_READY" == "true" ]; then
+if [ "$WAIT_FOR_READY" = "true" ]; then
   echo "::group::Waiting for cluster ready"
   echo "Waiting for k3s cluster to be ready (timeout: ${TIMEOUT}s)..."
   
@@ -88,7 +88,7 @@ if [ "$WAIT_FOR_READY" == "true" ]; then
               # Jobs may crash/retry during installation, which is normal
               CRITICAL_FAILING=$(kubectl --kubeconfig "$KUBECONFIG_PATH" get pods -n kube-system --no-headers 2>/dev/null | grep -v "helm-install" | grep -E "Error|CrashLoopBackOff" | wc -l || echo "0")
               
-              if [ "$CRITICAL_FAILING" == "0" ]; then
+              if [ "$CRITICAL_FAILING" = "0" ]; then
                 echo "  No critical pods failing"
                 echo "KUBECONFIG exported: $KUBECONFIG_PATH"
                 
