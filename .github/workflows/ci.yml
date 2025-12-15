@@ -10,7 +10,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    name: Test k3s
+    name: Test
 
     steps:
       - name: Checkout
@@ -20,12 +20,12 @@ jobs:
         run: |
           echo "=== Checking initial system state ==="
           if command -v k3s &> /dev/null; then
-            echo "✗ k3s already installed"
+            echo "ERROR: k3s already installed"
             exit 1
           fi
-          echo "✓ k3s not installed"
+          echo "OK: k3s not installed"
 
-      - name: Setup k3s
+      - name: Setup cluster
         id: setup
         uses: ./
         with:
@@ -36,8 +36,8 @@ jobs:
       - name: Verify installation
         run: |
           echo "=== Verifying installation ==="
-          command -v k3s && echo "✓ k3s binary found" || { echo "✗ k3s binary not found"; exit 1; }
-          sudo systemctl is-active k3s && echo "✓ k3s service is active" || { echo "✗ k3s service not active"; exit 1; }
+          command -v k3s && echo "OK: k3s binary found" || { echo "ERROR: k3s binary not found"; exit 1; }
+          sudo systemctl is-active k3s && echo "OK: k3s service is active" || { echo "ERROR: k3s service not active"; exit 1; }
 
       - name: Test kubectl access
         env:
@@ -60,4 +60,4 @@ jobs:
 
           POD_NAME=$(kubectl get pod -l app=nginx -o jsonpath='{.items[0].metadata.name}')
           kubectl exec "$POD_NAME" -- wget -O- http://localhost:80 | grep -q "Welcome to nginx"
-          echo "✓ Workload is functioning correctly"
+          echo "OK: Test workload is functioning correctly"
